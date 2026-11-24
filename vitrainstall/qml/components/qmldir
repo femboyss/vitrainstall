@@ -1,0 +1,8 @@
+singleton Theme 1.0 Theme.qml
+GlassCard 1.0 GlassCard.qml
+Button2 1.0 Button2.qml
+Field 1.0 Field.qml
+KeyCap 1.0 KeyCap.qml
+MouseIcon 1.0 MouseIcon.qml
+PlatformBar 1.0 PlatformBar.qml
+Backdrop 1.0 Backdrop.qml

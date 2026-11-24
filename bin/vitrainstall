@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# vitrainstall - the Vitra installer. (c) 2026 34 & Claude - GPL-3.0-or-later
+# Installed: code in /usr/lib/vitrainstall. From a git checkout: next to this file.
+here=$(dirname "$(readlink -f "$0")")
+if [[ -d $here/../vitrainstall ]]; then
+    export PYTHONPATH="$here/..${PYTHONPATH:+:$PYTHONPATH}"
+else
+    export PYTHONPATH="/usr/lib/vitrainstall${PYTHONPATH:+:$PYTHONPATH}"
+fi
+exec python3 -m vitrainstall "$@"

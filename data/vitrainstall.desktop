@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Install Vitra
+Name[de]=Vitra installieren
+Comment=Install Vitra on this computer
+Comment[de]=Vitra auf diesem Computer installieren
+Exec=pkexec vitrainstall
+Icon=system-software-install
+Terminal=false
+Categories=System;

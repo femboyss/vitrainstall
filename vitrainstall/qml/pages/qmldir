@@ -1,0 +1,8 @@
+WelcomePage 1.0 WelcomePage.qml
+PlatformPage 1.0 PlatformPage.qml
+KeyboardPage 1.0 KeyboardPage.qml
+DiskPage 1.0 DiskPage.qml
+UserPage 1.0 UserPage.qml
+SummaryPage 1.0 SummaryPage.qml
+InstallPage 1.0 InstallPage.qml
+DonePage 1.0 DonePage.qml
