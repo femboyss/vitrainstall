@@ -14,4 +14,6 @@ QtObject {
     readonly property color border: Qt.rgba(1, 1, 1, 0.12)
     readonly property string font: "Inter"
     readonly property int radius: 18
+    // lite mode: no moving background and no animations (software rendering, slow GPUs)
+    property bool lite: false
 }

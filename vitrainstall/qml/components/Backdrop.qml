@@ -27,11 +27,13 @@ Rectangle {
             }
             onWidthChanged: requestPaint()
             SequentialAnimation on x {
+                running: !Theme.lite
                 loops: Animation.Infinite
                 NumberAnimation { to: x + 140; duration: modelData.d; easing.type: Easing.InOutSine }
                 NumberAnimation { to: x - 80; duration: modelData.d; easing.type: Easing.InOutSine }
             }
             SequentialAnimation on y {
+                running: !Theme.lite
                 loops: Animation.Infinite
                 NumberAnimation { to: y - 100; duration: modelData.d * 0.8; easing.type: Easing.InOutSine }
                 NumberAnimation { to: y + 60; duration: modelData.d * 0.8; easing.type: Easing.InOutSine }

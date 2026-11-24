@@ -17,7 +17,7 @@ Rectangle {
     border.width: kind === "ghost" ? 1 : 0
     border.color: Theme.border
     scale: ma.pressed ? 0.97 : 1
-    Behavior on scale { NumberAnimation { duration: 90 } }
+    Behavior on scale { enabled: !Theme.lite; NumberAnimation { duration: 90 } }
     Text {
         id: label
         anchors.centerIn: parent

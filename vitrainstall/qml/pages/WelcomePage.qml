@@ -3,20 +3,22 @@ import QtQuick
 import "../components"
 
 Item {
+    id: welcome
     property var app
     property bool online: true
+    property bool hasWifi: backend.wifiDevice() !== ""
     Component.onCompleted: online = backend.hasInternet()
 
     Column {
         anchors.centerIn: parent
-        spacing: 26
+        spacing: online ? 26 : 16
         width: 640
 
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             text: "Vitra<font color='" + Theme.accent + "'>.</font>"
             textFormat: Text.StyledText
-            color: Theme.text; font.family: Theme.font; font.pixelSize: 96; font.weight: Font.Black
+            color: Theme.text; font.family: Theme.font; font.pixelSize: online ? 96 : 56; font.weight: Font.Black
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
@@ -24,6 +26,7 @@ Item {
             font.family: Theme.font; font.pixelSize: 30; font.weight: Font.DemiBold
         }
         Text {
+            visible: online
             width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap
             text: app.t("welcome_sub"); color: Theme.muted; font.family: Theme.font; font.pixelSize: 17
         }
@@ -43,13 +46,26 @@ Item {
         }
         GlassCard {
             visible: !online
-            width: parent.width; height: warn.implicitHeight + 70
+            width: parent.width; height: offline.implicitHeight + 36
             border.color: Theme.danger
             Column {
-                anchors.fill: parent; anchors.margins: 18; spacing: 10
-                Text { id: warn; width: parent.width; wrapMode: Text.WordWrap; text: app.t("no_internet")
+                id: offline
+                anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 18
+                spacing: 12
+                Text { width: parent.width; wrapMode: Text.WordWrap; text: app.t("no_internet")
                        color: Theme.text; font.family: Theme.font; font.pixelSize: 14 }
-                Button2 { kind: "ghost"; text: app.t("retry"); height: 36; onClicked: online = backend.hasInternet() }
+                WifiPanel {
+                    visible: hasWifi
+                    width: parent.width
+                    app: welcome.app
+                    onOnline: welcome.online = true
+                }
+                Row {
+                    spacing: 12
+                    Button2 { kind: "ghost"; text: app.t("retry"); height: 36; onClicked: online = backend.hasInternet() }
+                    Text { anchors.verticalCenter: parent.verticalCenter; text: app.t("no_cable_hint")
+                           color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
+                }
             }
         }
         Button2 {

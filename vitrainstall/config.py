@@ -177,6 +177,8 @@ def post_install_commands(c: Choices) -> list[str]:
         # first login: Hyprland preselected in the login screen
         "mkdir -p /var/lib/sddm && printf '[Last]\\nSession=/usr/share/wayland-sessions/hyprland.desktop\\n' > /var/lib/sddm/state.conf",
         "chown -R sddm:sddm /var/lib/sddm 2>/dev/null || true",
+        # archinstall's Hyprland profile brings these, glassy has its own notifications + launcher
+        "pacman -Rns --noconfirm dunst wofi 2>/dev/null || true",
         # platform profile + set up glassy in the new user's home
         as_user(f"mkdir -p ~/.config/vitra && printf '%s\\n' {profile} > ~/.config/vitra/profile"),
         as_user("vtx -y deploy"),

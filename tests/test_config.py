@@ -88,6 +88,29 @@ def test_shell_injection_in_username_impossible():
         raise AssertionError(name)
 
 
+def test_removes_dunst_and_wofi():
+    cfg, _ = config.build(good())
+    assert any("dunst wofi" in c for c in cfg["custom_commands"])
+
+
+def test_wifi_and_mirrors_helpers():
+    from vitrainstall import system
+    nets = system.parse_networks(
+        "      Network name    Security   Signal\n"
+        "\x1b[1;90m  > \x1b[0m  Home Net          psk        -5400\n"
+        "      Cafe              open       -8800\n")
+    assert nets[0]["ssid"] == "Home Net" and nets[0]["connected"] and nets[0]["secure"]
+    assert nets[1]["ssid"] == "Cafe" and not nets[1]["secure"]
+    prof = system.nm_wifi_profile("Home Net", "secret")
+    assert "ssid=Home Net" in prof and "psk=secret" in prof
+    assert "psk=" not in system.nm_wifi_profile("Cafe", "")
+    cmd = system.reflector_command("Europe/Vienna")
+    assert cmd[0] == "reflector" and "AT" in cmd[cmd.index("--country") + 1].split(",")[:1]
+    assert system.classify_failure("error: failed retrieving file 'a' : Operation too slow") == "download"
+    assert system.classify_failure(":: unable to satisfy dependency 'x'") == "packages"
+    assert system.classify_failure("something else") == "install_failed"
+
+
 if __name__ == "__main__":
     n = 0
     for name, fn in list(globals().items()):

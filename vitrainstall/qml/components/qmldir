@@ -6,3 +6,4 @@ KeyCap 1.0 KeyCap.qml
 MouseIcon 1.0 MouseIcon.qml
 PlatformBar 1.0 PlatformBar.qml
 Backdrop 1.0 Backdrop.qml
+WifiPanel 1.0 WifiPanel.qml

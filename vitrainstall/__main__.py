@@ -5,6 +5,7 @@
 #   vitrainstall --window   in a normal window
 #   vitrainstall --test     click through everything, nothing is installed
 #   vitrainstall --shot DIR save a screenshot of every page and quit (needs --test)
+#   vitrainstall --lite     no animations (also turns on by itself on slow graphics)
 
 from __future__ import annotations
 
@@ -28,6 +29,7 @@ def main() -> int:
     ap.add_argument("--window", action="store_true", help="run in a window instead of fullscreen")
     ap.add_argument("--lang", choices=["en", "de"], help="start language")
     ap.add_argument("--shot", metavar="DIR", help="save screenshots of all pages (test mode)")
+    ap.add_argument("--lite", action="store_true", help="no animations / moving background (slow graphics)")
     args = ap.parse_args()
 
     if not args.test and os.geteuid() != 0:
@@ -46,6 +48,7 @@ def main() -> int:
     engine.rootContext().setContextProperty("startLanguage", lang)
     engine.rootContext().setContextProperty("startWindowed", args.window or bool(args.shot))
     engine.rootContext().setContextProperty("shotDir", args.shot or "")
+    engine.rootContext().setContextProperty("startLite", args.lite or os.environ.get("VITRAINSTALL_LITE") == "1")
     engine.load(QUrl.fromLocalFile(str(HERE / "qml" / "Main.qml")))
     if not engine.rootObjects():
         return 1

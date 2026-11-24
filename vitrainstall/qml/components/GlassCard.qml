@@ -10,8 +10,8 @@ Rectangle {
     color: selected ? Qt.rgba(0.22, 0.77, 0.73, 0.14) : (ma.containsMouse && hoverable ? Theme.glassHi : Theme.glass)
     border.width: selected ? 2 : 1
     border.color: selected ? Theme.accent : Theme.border
-    Behavior on color { ColorAnimation { duration: 150 } }
-    Behavior on border.color { ColorAnimation { duration: 150 } }
+    Behavior on color { enabled: !Theme.lite; ColorAnimation { duration: 150 } }
+    Behavior on border.color { enabled: !Theme.lite; ColorAnimation { duration: 150 } }
     MouseArea {
         id: ma
         anchors.fill: parent

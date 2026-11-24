@@ -7,7 +7,9 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import tempfile
+import threading
 from pathlib import Path
 
 from PySide6.QtCore import Property, QObject, QProcess, QTimer, Signal, Slot
@@ -36,6 +38,8 @@ class Backend(QObject):
     logLine = Signal(str)
     finished = Signal(bool, str)  # success, error key / message
     stateChanged = Signal()
+    wifiNetworks = Signal("QVariantList")  # scan result
+    wifiResult = Signal(str)  # '' = connected and online, else an error key
 
     def __init__(self, test_mode: bool = False, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -48,6 +52,9 @@ class Backend(QObject):
         self._log = self._workdir / "install.log"
         self._fake_timer: QTimer | None = None
         self._fake_lines: list[str] = []
+        self._choices_obj: config.Choices | None = None
+        self._wifi: tuple[str, str] | None = None  # (ssid, password) that worked in the live system
+        self._failure_log = ""
 
     # ---------------------------------------------------------------- info for the pages
     @Property(bool, constant=True)
@@ -87,7 +94,46 @@ class Backend(QObject):
 
     @Slot(result=bool)
     def hasInternet(self) -> bool:
-        return True if self._test else system.has_internet()
+        if self._test:  # VITRAINSTALL_TEST_OFFLINE=1 shows the Wi-Fi picker in test mode
+            return os.environ.get("VITRAINSTALL_TEST_OFFLINE") != "1"
+        return system.has_internet()
+
+    # ---------------------------------------------------------------- Wi-Fi
+    @Slot(result=str)
+    def wifiDevice(self) -> str:
+        return "wlan0" if self._test else system.wifi_device()
+
+    @Slot()
+    def wifiScan(self) -> None:
+        """Scans in the background, answers with wifiNetworks."""
+        if self._test:
+            QTimer.singleShot(1200, lambda: self.wifiNetworks.emit([
+                {"ssid": "FRITZ!Box 7590 XY", "security": "psk", "secure": True, "signal": 4, "connected": False},
+                {"ssid": "Schule-Gast", "security": "open", "secure": False, "signal": 2, "connected": False},
+                {"ssid": "Nachbar", "security": "psk", "secure": True, "signal": 1, "connected": False},
+            ]))
+            return
+        dev = system.wifi_device()
+        threading.Thread(target=lambda: self.wifiNetworks.emit(system.wifi_scan(dev)), daemon=True).start()
+
+    @Slot(str, str)
+    def wifiConnect(self, ssid: str, password: str) -> None:
+        """Connects in the background, answers with wifiResult ('' = online)."""
+        if self._test:
+            err = "wifi_wrong_password" if password == "wrong" else ""
+            if not err:
+                self._wifi = (ssid, password)
+            QTimer.singleShot(1500, lambda: self.wifiResult.emit(err))
+            return
+        dev = system.wifi_device()
+
+        def work() -> None:
+            err = system.wifi_connect(dev, ssid, password)
+            if not err:
+                self._wifi = (ssid, password)
+            self.wifiResult.emit(err)
+
+        threading.Thread(target=work, daemon=True).start()
 
     @Slot(result=bool)
     def isUefi(self) -> bool:
@@ -158,6 +204,9 @@ class Backend(QObject):
         with os.fdopen(fd, "w") as f:
             json.dump(creds, f)
 
+        self._choices_obj = self._choices(choices)
+        self._failure_log = ""
+        self._progress = 0
         self._set_running(True)
         self._set_progress(2, "prepare")
 
@@ -165,6 +214,30 @@ class Backend(QObject):
             self._fake_install()
             return
 
+        # a failed earlier try may still have the new disk mounted
+        subprocess.run(["umount", "-R", "/mnt"], capture_output=True, check=False)
+
+        # 1) fast mirrors near the user (the default list sometimes has a dead one first)
+        self._set_progress(4, "mirrors")
+        self._feed("[vitrainstall] looking for fast package mirrors (reflector) ...")
+        args = system.reflector_command(self._choices_obj.timezone)
+        mirrors = QProcess(self)
+        mirrors.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
+        self._proc = mirrors
+        mirrors.readyReadStandardOutput.connect(self._read)
+
+        def after_mirrors(code: int, _status) -> None:  # noqa: ANN001
+            self._feed("[vitrainstall] mirrors ready" if code == 0 else "[vitrainstall] reflector failed, using the default mirrors")
+            self._start_archinstall(cfg_path, creds_path)
+
+        mirrors.finished.connect(after_mirrors)
+        mirrors.errorOccurred.connect(lambda _e: after_mirrors(1, None) if mirrors.state() == QProcess.ProcessState.NotRunning else None)
+        QTimer.singleShot(90_000, lambda: mirrors.kill() if mirrors.state() != QProcess.ProcessState.NotRunning else None)
+        mirrors.start(args[0], args[1:])
+
+    def _start_archinstall(self, cfg_path: Path, creds_path: Path) -> None:
+        if self._proc and self._proc.program() == "archinstall":
+            return  # already started (errorOccurred + finished both fired)
         self._proc = QProcess(self)
         self._proc.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
         self._proc.readyReadStandardOutput.connect(self._read)
@@ -203,10 +276,47 @@ class Backend(QObject):
         creds_path.unlink(missing_ok=True)
         self._set_running(False)
         if ok:
+            if not self._test:
+                self._carry_over_wifi()
             self._set_progress(100, "done")
             self.finished.emit(True, "")
-        else:
-            self.finished.emit(False, "install_failed")
+            return
+        logs = [str(self._log), "/var/log/archinstall/install.log"]
+        self._failure_log = system.log_tail(logs) if not self._test else "[test] error: failed retrieving file 'x' : Operation too slow"
+        try:
+            whole = "\n".join(Path(p).read_text(errors="replace")[-20000:] for p in logs if Path(p).exists())
+        except OSError:
+            whole = self._failure_log
+        self.finished.emit(False, system.classify_failure(whole or self._failure_log))
+
+    @Slot(result=str)
+    def failureLog(self) -> str:
+        return self._failure_log
+
+    def _carry_over_wifi(self) -> None:
+        """Put the Wi-Fi that worked here into the new system (NetworkManager keyfile, root only)."""
+        c = self._choices_obj
+        if not self._wifi or not c:
+            return
+        ssid, password = self._wifi
+        part = c.disk + ("p2" if c.disk[-1].isdigit() else "2")
+        target = Path(tempfile.mkdtemp(prefix="vitra-target-"))
+        mount = ["mount", "-o", "subvol=@", part, str(target)] if c.filesystem == "btrfs" else ["mount", part, str(target)]
+        if subprocess.run(mount, capture_output=True, check=False).returncode != 0:
+            self._feed("[vitrainstall] could not save the Wi-Fi for the new system")
+            return
+        try:
+            d = target / "etc/NetworkManager/system-connections"
+            d.mkdir(parents=True, exist_ok=True)
+            safe = re.sub(r"[^A-Za-z0-9._-]", "_", ssid) or "wifi"
+            f = d / f"{safe}.nmconnection"
+            fd = os.open(f, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w") as out:
+                out.write(system.nm_wifi_profile(ssid, password))
+            self._feed(f"[vitrainstall] Wi-Fi '{ssid}' saved for the new system")
+        finally:
+            subprocess.run(["umount", str(target)], capture_output=True, check=False)
+            target.rmdir()
 
     # test mode: walks through the steps without touching anything
     def _fake_install(self) -> None:
@@ -232,7 +342,8 @@ class Backend(QObject):
         if not self._fake_lines:
             assert self._fake_timer is not None
             self._fake_timer.stop()
-            self._done(True, self._workdir / "user_credentials.json")
+            fail = bool(self._choices_obj and self._choices_obj.username == "fail")
+            self._done(not fail, self._workdir / "user_credentials.json")
             return
         self._feed(self._fake_lines.pop(0))
 

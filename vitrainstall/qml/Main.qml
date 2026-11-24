@@ -63,7 +63,19 @@ Window {
     Component.onCompleted: {
         timezone = backend.guessTimezone()
         gfxDriver = backend.guessGfxDriver()
+        if (startLite) Theme.lite = true
+        else if (shotDir === "") fpsWarmup.start()
     }
+
+    // ---------------------------------------------------------------- lite mode probe
+    // The background moves all the time, so a fast machine draws ~60 frames per second.
+    // Under ~24 (software rendering in a VM, no GPU driver yet) the effects go off.
+    property int frames: 0
+    onFrameSwapped: frames++
+    Timer { id: fpsWarmup; interval: 3000; onTriggered: { root.frames = 0; fpsMeasure.start() } }
+    Timer { id: fpsMeasure; interval: 2000
+            onTriggered: { if (root.frames / 2 < 24) Theme.lite = true
+                           console.log("vitrainstall: " + (root.frames / 2) + " fps, lite mode " + Theme.lite) } }
 
     // ---------------------------------------------------------------- look
     Backdrop { anchors.fill: parent }
@@ -73,7 +85,7 @@ Window {
         anchors.fill: parent
         platform: root.platform
         opacity: root.platform !== "" && root.page >= 2 ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: 500 } }
+        Behavior on opacity { enabled: !Theme.lite; NumberAnimation { duration: 500 } }
         z: 1
     }
 
