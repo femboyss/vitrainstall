@@ -55,6 +55,9 @@ class Backend(QObject):
         self._choices_obj: config.Choices | None = None
         self._wifi: tuple[str, str] | None = None  # (ssid, password) that worked in the live system
         self._failure_log = ""
+        self._last_choices: dict = {}
+        self._auto_retry = False  # True while the one automatic retry runs
+        self._auto_retried = False
 
     # ---------------------------------------------------------------- info for the pages
     @Property(bool, constant=True)
@@ -205,6 +208,10 @@ class Backend(QObject):
             json.dump(creds, f)
 
         self._choices_obj = self._choices(choices)
+        self._last_choices = dict(choices)
+        if not self._auto_retry:
+            self._auto_retried = False  # a new install from the user gets its own retry
+        self._auto_retry = False
         self._failure_log = ""
         self._progress = 0
         self._set_running(True)
@@ -287,7 +294,15 @@ class Backend(QObject):
             whole = "\n".join(Path(p).read_text(errors="replace")[-20000:] for p in logs if Path(p).exists())
         except OSError:
             whole = self._failure_log
-        self.finished.emit(False, system.classify_failure(whole or self._failure_log))
+        kind = system.classify_failure(whole or self._failure_log)
+        # downloads often just hiccup (slow mirror, weak Wi-Fi): one quiet retry before giving up
+        if kind == "download" and not self._auto_retried and not self._test:
+            self._auto_retried = True
+            self._auto_retry = True
+            self._feed("[vitrainstall] download problem, trying once more by itself ...")
+            QTimer.singleShot(1500, lambda: self.install(self._last_choices))
+            return
+        self.finished.emit(False, kind)
 
     @Slot(result=str)
     def failureLog(self) -> str:
