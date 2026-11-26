@@ -149,9 +149,18 @@ class Backend(QObject):
             return layout
         import subprocess
 
-        for cmd in (["hyprctl", "keyword", "input:kb_layout", layout], ["localectl", "set-x11-keymap", layout]):
+        # live ISO: sway (changes the layout of the running session right away);
+        # hyprctl when tested inside Hyprland; localectl so X11/console agree
+        cmds = [["swaymsg", "input", "type:keyboard", "xkb_layout", layout],
+                ["hyprctl", "keyword", "input:kb_layout", layout],
+                ["localectl", "set-x11-keymap", layout]]
+        for cmd in cmds:
+            if cmd[0] == "swaymsg" and not os.environ.get("SWAYSOCK"):
+                continue
+            if cmd[0] == "hyprctl" and not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+                continue
             if shutil.which(cmd[0]):
-                subprocess.run(cmd, capture_output=True, check=False)
+                subprocess.run(cmd, capture_output=True, check=False, timeout=5)
         return layout
 
     @Property(int, notify=progressChanged)
@@ -209,6 +218,7 @@ class Backend(QObject):
 
         self._choices_obj = self._choices(choices)
         self._last_choices = dict(choices)
+        is_retry = self._auto_retry
         if not self._auto_retry:
             self._auto_retried = False  # a new install from the user gets its own retry
         self._auto_retry = False
@@ -224,22 +234,47 @@ class Backend(QObject):
         # a failed earlier try may still have the new disk mounted
         subprocess.run(["umount", "-R", "/mnt"], capture_output=True, check=False)
 
-        # 1) fast mirrors near the user (the default list sometimes has a dead one first)
+        # 1) mirrors. A good list (many mirrors, made when the ISO was built) is written first,
+        #    so pacman always has somewhere else to go when one mirror is slow. Nobody has to
+        #    run anything by hand. reflector is only an extra, with a hard time limit.
         self._set_progress(4, "mirrors")
-        self._feed("[vitrainstall] looking for fast package mirrors (reflector) ...")
+        base = system.read_servers(system.SHIPPED_MIRRORLIST) or system.read_servers(system.MIRRORLIST)
+        if is_retry:
+            # the last try had download problems: start with other mirrors this time
+            servers = system.rotate(system.read_servers(system.MIRRORLIST) or base, 4)
+            system.write_mirrorlist(servers, "retry with other mirrors first")
+            self._feed(f"[vitrainstall] retry: {len(servers)} mirrors, starting with different ones")
+            self._start_archinstall(cfg_path, creds_path)
+            return
+        if system.write_mirrorlist(base, "shipped with the ISO"):
+            self._feed(f"[vitrainstall] {len(base)} package mirrors ready, looking for faster ones near you ...")
+        Path(system.REFLECTOR_OUT).unlink(missing_ok=True)
         args = system.reflector_command(self._choices_obj.timezone)
         mirrors = QProcess(self)
         mirrors.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
         self._proc = mirrors
         mirrors.readyReadStandardOutput.connect(self._read)
 
-        def after_mirrors(code: int, _status) -> None:  # noqa: ANN001
-            self._feed("[vitrainstall] mirrors ready" if code == 0 else "[vitrainstall] reflector failed, using the default mirrors")
+        def after_mirrors(_code: int = 1, _status=None) -> None:  # noqa: ANN001
+            if self._proc is not mirrors:
+                return  # already went on (finished + errorOccurred/timeout can both fire)
+            fast = system.read_servers(system.REFLECTOR_OUT)
+            if len(fast) >= 3:
+                merged = system.merge_servers(fast, base)
+                system.write_mirrorlist(merged, "fastest near you first, then the shipped list")
+                self._feed(f"[vitrainstall] {len(fast)} fast mirrors found, {len(merged)} in total")
+            else:
+                self._feed("[vitrainstall] no faster mirrors found, using the shipped list (that is fine)")
             self._start_archinstall(cfg_path, creds_path)
 
         mirrors.finished.connect(after_mirrors)
-        mirrors.errorOccurred.connect(lambda _e: after_mirrors(1, None) if mirrors.state() == QProcess.ProcessState.NotRunning else None)
-        QTimer.singleShot(90_000, lambda: mirrors.kill() if mirrors.state() != QProcess.ProcessState.NotRunning else None)
+        mirrors.errorOccurred.connect(lambda _e: after_mirrors() if mirrors.state() == QProcess.ProcessState.NotRunning else None)
+
+        def too_slow() -> None:
+            if mirrors.state() != QProcess.ProcessState.NotRunning:
+                mirrors.kill()  # finished fires, after_mirrors goes on with the shipped list
+
+        QTimer.singleShot(35_000, too_slow)
         mirrors.start(args[0], args[1:])
 
     def _start_archinstall(self, cfg_path: Path, creds_path: Path) -> None:

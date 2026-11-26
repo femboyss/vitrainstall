@@ -20,6 +20,8 @@ Window {
     property string language: startLanguage
     property string platform: ""
     property string keyboard: language === "de" ? "at" : "us"
+    // every change (language button or keyboard page) switches the live keyboard right away
+    onKeyboardChanged: if (backend.setKeyboard(keyboard) !== keyboard) console.warn("keyboard", keyboard)
     property string timezone: "UTC"
     property var disk: null
     property string filesystem: "btrfs"

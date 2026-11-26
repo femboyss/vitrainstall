@@ -21,6 +21,7 @@ VITRA_REPO = {
 VITRA_PACKAGES = [
     "vtx",
     "cmaal",
+    "vitra-branding",
     "glassy-shell",
     "glassy-wallpapers",
     "networkmanager",

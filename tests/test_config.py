@@ -111,6 +111,26 @@ def test_wifi_and_mirrors_helpers():
     assert system.classify_failure("something else") == "install_failed"
 
 
+def test_mirrorlist_without_reflector():
+    import tempfile
+    from vitrainstall import system
+    with tempfile.TemporaryDirectory() as d:
+        src = Path(d) / "shipped"
+        src.write_text("#\n## near\nServer = https://a/$repo/os/$arch\n#Server = https://off/$repo/os/$arch\n"
+                       "Server = https://b/$repo/os/$arch  # comment\nServer = https://a/$repo/os/$arch\nServer = https://c/$repo/os/$arch\n")
+        base = system.read_servers(str(src))
+        assert base == ["https://a/$repo/os/$arch", "https://b/$repo/os/$arch", "https://c/$repo/os/$arch"]
+        merged = system.merge_servers(["https://fast/$repo/os/$arch", "https://b/$repo/os/$arch"], base)
+        assert merged[0] == "https://fast/$repo/os/$arch" and len(merged) == 4 and merged.count("https://b/$repo/os/$arch") == 1
+        assert system.rotate(base, 1)[0] == "https://b/$repo/os/$arch" and sorted(system.rotate(base, 4)) == sorted(base)
+        assert system.rotate([], 3) == []
+        out = Path(d) / "mirrorlist"
+        assert system.write_mirrorlist(base, "test", str(out))
+        assert system.read_servers(str(out)) == base
+        assert not system.write_mirrorlist([], "empty", str(out))
+    assert "--save" in system.reflector_command("UTC") and system.REFLECTOR_OUT in system.reflector_command("UTC")
+
+
 if __name__ == "__main__":
     n = 0
     for name, fn in list(globals().items()):

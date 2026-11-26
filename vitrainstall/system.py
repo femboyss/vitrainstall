@@ -227,14 +227,66 @@ def country_for_timezone(tz: str) -> str:
     return ""
 
 
-def reflector_command(tz: str, save_to: str = "/etc/pacman.d/mirrorlist") -> list[str]:
-    """Fast HTTPS mirrors near the user (plus big neighbours as backup)."""
+MIRRORLIST = "/etc/pacman.d/mirrorlist"
+# good list made when the ISO was built (vitra-iso/scripts/make-mirrorlist.py), always there offline
+SHIPPED_MIRRORLIST = "/etc/pacman.d/vitra-mirrorlist"
+REFLECTOR_OUT = "/tmp/vitra-mirrorlist.reflector"
+
+
+def reflector_command(tz: str, save_to: str = REFLECTOR_OUT) -> list[str]:
+    """Fast HTTPS mirrors near the user (plus big neighbours as backup). Only an extra:
+    the installer works without it, because the shipped list is used first."""
     countries = []
     for cc in (country_for_timezone(tz), "DE", "NL", "FR", "SE", "US"):
         if cc and cc not in countries:
             countries.append(cc)
-    return ["reflector", "--protocol", "https", "--age", "24", "--latest", "25", "--fastest", "12",
-            "--sort", "rate", "--download-timeout", "4", "--country", ",".join(countries), "--save", save_to]
+    return ["reflector", "--protocol", "https", "--age", "12", "--latest", "30", "--fastest", "10",
+            "--sort", "rate", "--download-timeout", "3", "--country", ",".join(countries), "--save", save_to]
+
+
+def read_servers(path: str) -> list[str]:
+    """Server URLs of a pacman mirrorlist (commented ones ignored, no doubles)."""
+    out: list[str] = []
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.split("#", 1)[0].strip()
+                if line.startswith("Server") and "=" in line:
+                    url = line.split("=", 1)[1].strip()
+                    if url and url not in out:
+                        out.append(url)
+    except OSError:
+        pass
+    return out
+
+
+def merge_servers(first: list[str], fallback: list[str], limit: int = 40) -> list[str]:
+    """first ones on top, then the fallback list, no doubles."""
+    out: list[str] = []
+    for url in first + fallback:
+        if url not in out:
+            out.append(url)
+    return out[:limit]
+
+
+def rotate(servers: list[str], n: int) -> list[str]:
+    """Move the first n mirrors to the end (a retry should not start with the same ones)."""
+    if not servers:
+        return servers
+    n %= len(servers)
+    return servers[n:] + servers[:n]
+
+
+def mirrorlist_text(servers: list[str], note: str) -> str:
+    return "\n".join(["#", f"# Vitra mirrorlist - {note}", "#", ""] + [f"Server = {u}" for u in servers]) + "\n"
+
+
+def write_mirrorlist(servers: list[str], note: str, path: str = MIRRORLIST) -> bool:
+    if not servers:
+        return False
+    with open(path, "w") as f:
+        f.write(mirrorlist_text(servers, note))
+    return True
 
 
 # ---------------------------------------------------------------- after a failed install

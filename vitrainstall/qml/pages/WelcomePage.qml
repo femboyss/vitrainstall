@@ -14,6 +14,13 @@ Item {
         spacing: online ? 26 : 16
         width: 640
 
+        Image {
+            anchors.horizontalCenter: parent.horizontalCenter
+            source: "../assets/vitra-logo.png"
+            width: online ? 132 : 84; height: width
+            sourceSize.width: 512; sourceSize.height: 512
+            smooth: true; mipmap: true
+        }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             text: "Vitra<font color='" + Theme.accent + "'>.</font>"
