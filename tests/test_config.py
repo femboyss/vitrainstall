@@ -131,6 +131,30 @@ def test_mirrorlist_without_reflector():
     assert "--save" in system.reflector_command("UTC") and system.REFLECTOR_OUT in system.reflector_command("UTC")
 
 
+def test_progress_ignores_package_names():
+    from vitrainstall import system
+    cur = 25  # base system is installing
+    for noise in ["(12/143) installing xdg-user-dirs", "(13/143) installing sudo", "(14/143) installing grub",
+                  " hyprland-0.57-1-x86_64 downloading...", "DEBUG - Importing profile: hyprland.py",
+                  ":: Processing package changes...", "(3/9) Updating linux initcpios...",
+                  "==> Installation finished for some-package", "warning: user-dirs: you can now reboot"]:
+        assert system.progress_step(noise, cur) is None, noise
+    seq = ["Wiping partitions and metadata: /dev/vda", "Mounting /dev/vda2", "[vitrainstall] 26 package mirrors ready",
+           "Installing packages: ['base', 'linux']", "==> Building image from preset: 'default'",
+           "Adding bootloader Systemd-boot to /dev/vda1", "Installing packages: ['hyprland', 'sddm']",
+           "Installing packages: ['vtx', 'cmaal']", "Creating user anna",
+           "Executing custom command \"su - anna -c 'vtx -y deploy'\" ...",
+           "Installation completed without any errors."]
+    keys, cur = [], 0
+    for line in seq:
+        step = system.progress_step(line, cur)
+        assert step, line
+        cur = step[0]; keys.append(step[1])
+    assert keys == ["disk", "mount", "mirrors", "base", "kernel", "boot", "desktop", "vitra", "user", "setup", "done"]
+    # other custom commands (groups, sddm) are not "setup" yet
+    assert system.progress_step('Executing custom command "usermod -aG video anna" ...', 88) is None
+
+
 if __name__ == "__main__":
     n = 0
     for name, fn in list(globals().items()):

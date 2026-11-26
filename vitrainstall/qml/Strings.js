@@ -86,7 +86,7 @@ var en = {
     step_mirrors: "Setting up package sources", step_base: "Installing the base system",
     step_kernel: "Setting up the kernel", step_boot: "Installing the boot loader",
     step_desktop: "Installing the desktop", step_vitra: "Installing Vitra components",
-    step_user: "Creating your user", step_setup: "Setting up glassy for you", step_done: "Done",
+    step_user: "Creating your user", step_setup: "Setting up glassy for you (takes a few minutes)", step_done: "Done",
 
     done_title: "Vitra is installed",
     done_sub: "Remove the USB stick and restart. Have fun!",
@@ -188,7 +188,7 @@ var de = {
     step_mirrors: "Paketquellen einrichten", step_base: "Basissystem installieren",
     step_kernel: "Kernel einrichten", step_boot: "Bootloader installieren",
     step_desktop: "Desktop installieren", step_vitra: "Vitra-Komponenten installieren",
-    step_user: "Deinen Benutzer anlegen", step_setup: "glassy für dich einrichten", step_done: "Fertig",
+    step_user: "Deinen Benutzer anlegen", step_setup: "glassy für dich einrichten (dauert ein paar Minuten)", step_done: "Fertig",
 
     done_title: "Vitra ist installiert",
     done_sub: "Zieh den USB-Stick ab und starte neu. Viel Spaß!",

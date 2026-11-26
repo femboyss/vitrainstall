@@ -320,3 +320,38 @@ def classify_failure(text: str) -> str:
     if "unable to satisfy dependency" in low or "target not found" in low:
         return "packages"
     return "install_failed"
+
+
+# ---------------------------------------------------------------- progress from the archinstall output
+# Only archinstall's own status lines move the progress bar. pacman's package list is ignored:
+# package names like xdg-user-dirs, sudo, grub or hyprland used to make it jump ahead
+# ("Creating your user" while the base system was still installing).
+STEPS = [
+    (r"wiping partitions|creating partitions|formatting|creating subvolumes", 8, "disk"),
+    (r"\bmounting\b", 14, "mount"),
+    (r"\[vitrainstall\].*mirror", 18, "mirrors"),
+    (r"installing packages: \[?'?base\b|\bpacstrap\b", 25, "base"),
+    (r"==> (starting build|building image|creating .*initcpio image)", 55, "kernel"),
+    (r"adding bootloader|installing (systemd|grub|limine|refind) bootloader|bootctl install|grub-install", 65, "boot"),
+    (r"installing packages: .*'(hyprland|sddm|greetd|ly)'|installing gfx driver", 72, "desktop"),
+    (r"installing packages: .*'(vtx|glassy-shell|vitra-branding)'", 82, "vitra"),
+    (r"creating user |setting password for |enabling sudo permissions", 88, "user"),
+    (r"executing custom command .*vtx -y deploy", 92, "setup"),
+    (r"installation completed without any errors", 100, "done"),
+]
+
+_NOISE = re.compile(r"^\s*\(\s*\d+/\d+\)|\bdebug\b|\.pkg\.tar|downloading|resolving dependencies|"
+                    r"looking for conflicting|^\s*packages \(\d+\)|^\s*total (download|installed)|"
+                    r"^\s*::|^\s*->|warning:|checking (keys|package|keyring|available)|loading package")
+
+
+def progress_step(line: str, current: int) -> tuple[int, str] | None:
+    """(percent, step key) when this output line is a real archinstall step past `current`."""
+    low = line.lower()
+    if _NOISE.search(low):
+        return None
+    for pattern, pct, key in STEPS:
+        if pct > current and re.search(pattern, low):
+            return pct, key
+    return None
+

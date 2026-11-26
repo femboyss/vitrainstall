@@ -16,20 +16,8 @@ from PySide6.QtCore import Property, QObject, QProcess, QTimer, Signal, Slot
 
 from . import config, system
 
-# archinstall output -> (progress %, step key). The QML side translates the step key.
-STEPS = [
-    (r"wip(e|ing)|partition|format", 8, "disk"),
-    (r"mount", 14, "mount"),
-    (r"mirror|pacman\.conf|repositor", 18, "mirrors"),
-    (r"pacstrap|installing packages|base system", 25, "base"),
-    (r"kernel|mkinitcpio|initramfs", 55, "kernel"),
-    (r"bootloader|systemd-boot|grub|bootctl", 65, "boot"),
-    (r"profile|hyprland|greeter|sddm|graphics|driver", 72, "desktop"),
-    (r"additional packages|installing.*(vtx|glassy)", 82, "vitra"),
-    (r"user|password|sudo", 88, "user"),
-    (r"custom command", 92, "setup"),
-    (r"installation completed|installation finished|you can now reboot", 100, "done"),
-]
+# archinstall output -> (progress %, step key): see system.STEPS / system.progress_step
+STEPS = system.STEPS
 
 
 class Backend(QObject):
@@ -308,11 +296,9 @@ class Backend(QObject):
 
     def _feed(self, line: str) -> None:
         self.logLine.emit(line)
-        low = line.lower()
-        for pattern, pct, key in STEPS:
-            if pct > self._progress and re.search(pattern, low):
-                self._set_progress(pct, key)
-                break
+        step = system.progress_step(line, self._progress)
+        if step:
+            self._set_progress(*step)
 
     def _done(self, ok: bool, creds_path: Path) -> None:
         creds_path.unlink(missing_ok=True)
@@ -371,17 +357,22 @@ class Backend(QObject):
     # test mode: walks through the steps without touching anything
     def _fake_install(self) -> None:
         self._fake_lines = [
-            "[test] Wiping /dev/vda and creating partitions",
-            "[test] Mounting filesystems",
-            "[test] Writing pacman.conf with [vitra] repository",
-            "[test] pacstrap: installing base system",
-            "[test] Running mkinitcpio for the kernel",
-            "[test] Installing bootloader systemd-boot",
-            "[test] Installing profile Hyprland, greeter sddm, graphics driver",
-            "[test] Installing additional packages: vtx glassy-shell cmaal",
-            "[test] Creating user and setting password",
-            "[test] Running custom commands: vtx deploy",
-            "[test] Installation completed (nothing was changed - test mode)",
+            "Wiping partitions and metadata: /dev/vda",
+            "Creating partitions: /dev/vda",
+            "Mounting /dev/vda2",
+            "[vitrainstall] 26 package mirrors ready",
+            "Installing packages: ['base', 'base-devel', 'linux', 'linux-firmware']",
+            "(12/143) installing xdg-user-dirs",
+            "(13/143) installing sudo",
+            "(14/143) installing grub",
+            "==> Building image from preset: /etc/mkinitcpio.d/linux.preset: 'default'",
+            "Adding bootloader Systemd-boot to /dev/vda1",
+            "Installing packages: ['hyprland', 'sddm', 'kitty']",
+            "Installing packages: ['vtx', 'cmaal', 'vitra-branding', 'glassy-shell']",
+            "Creating user test",
+            "Setting password for test",
+            "Executing custom command \"su - test -c 'vtx -y deploy'\" ...",
+            "Installation completed without any errors. (test mode, nothing was changed)",
         ]
         self._fake_timer = QTimer(self)
         self._fake_timer.setInterval(700)
